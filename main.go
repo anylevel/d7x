@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anylevel/sandbox/cmd"
+	"github.com/anylevel/d7x/cmd"
 )
 
 func main() {
