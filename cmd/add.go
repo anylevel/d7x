@@ -22,8 +22,66 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		imageName := args[0]
-		add(imageName)
+		adds, _ := cmd.Flags().GetString("add")
+		arg, _ := cmd.Flags().GetStringToString("arg")
+		command, _ := cmd.Flags().GetString("cmd")
+		copy, _ := cmd.Flags().GetString("copy")
+		entryPoint, _ := cmd.Flags().GetString("entrypoint")
+		envs, _ := cmd.Flags().GetStringToString("env")
+		expose, _ := cmd.Flags().GetString("expose")
+		healthCheck, _ := cmd.Flags().GetString("healthcheck")
+		labels, _ := cmd.Flags().GetStringToString("label")
+		mntr, _ := cmd.Flags().GetString("maintainer")
+		onbuild, _ := cmd.Flags().GetStringSlice("onbuild")
+		run, _ := cmd.Flags().GetStringSlice("run")
+		shell, _ := cmd.Flags().GetString("shell")
+		stopSignal, _ := cmd.Flags().GetString("stopsignal")
+		user, _ := cmd.Flags().GetString("usr")
+		volume, _ := cmd.Flags().GetString("volume")
+		wrkdir, _ := cmd.Flags().GetString("wrkdir")
+		currentDockerFile := dockerFile{
+			baseImage:   imageName,
+			add:         adds,
+			args:        arg,
+			cmd:         command,
+			copy:        copy,
+			entryPoint:  entryPoint,
+			envs:        envs,
+			expose:      expose,
+			healthCheck: healthCheck,
+			labels:      labels,
+			maintainer:  mntr,
+			onbuild:     onbuild,
+			run:         run,
+			shell:       shell,
+			stopSignal:  stopSignal,
+			user:        user,
+			volumes:     volume,
+			workDir:     wrkdir,
+		}
+		add(imageName, &currentDockerFile)
 	},
+}
+
+type dockerFile struct {
+	baseImage   string
+	add         string
+	args        map[string]string
+	cmd         string
+	copy        string
+	entryPoint  string
+	envs        map[string]string
+	expose      string
+	healthCheck string
+	labels      map[string]string
+	maintainer  string
+	onbuild     []string
+	run         []string
+	shell       string
+	stopSignal  string
+	user        string
+	volumes     string
+	workDir     string
 }
 
 func init() {
@@ -48,7 +106,7 @@ func init() {
 	addCmd.Flags().StringP("wrkdir", "w", "", "Change working directory.")
 }
 
-func add(imageName string) {
+func add(imageName string, currentDockerFile *dockerFile) {
 	tempName := shortuuid.New()
 	fullPathDockerFile := filepath.Join("/tmp", tempName)
 	f, err := os.Create(fullPathDockerFile)
@@ -58,8 +116,4 @@ func add(imageName string) {
 	defer f.Close()
 	baseImageLine := fmt.Sprintf("FROM %s\n", imageName)
 	f.WriteString(baseImageLine)
-	if 
-
-
-	}
 }
