@@ -1,6 +1,3 @@
-/*
-Copyright B) 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -22,12 +19,11 @@ import (
 	"golang.org/x/term"
 )
 
-// createCmd represents the create command
 var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create image with shell!",
 	Long: `Create image with shell from source image
-	Usage: d7x create name_container name_image [Flags]
+Usage: d7x create name_container name_image [Flags]
 	`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -41,15 +37,6 @@ var createCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().StringSliceP("volume", "v", []string{}, "Bind mount a volume")
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// createCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 var config container.Config = container.Config{
