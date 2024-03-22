@@ -41,7 +41,6 @@ to quickly create a Cobra application.`,
 		volume, _ := cmd.Flags().GetString("volume")
 		wrkdir, _ := cmd.Flags().GetString("wrkdir")
 		save, _ := cmd.Flags().GetBool("output")
-		fmt.Println(save)
 		currentDockerFile := dockerFile{
 			baseImage:   imageName,
 			add:         adds,
@@ -148,7 +147,6 @@ func saveDockerFile(srcFile *os.File) (err error) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("My current dir:%s", pathWd)
 	pathToSave := filepath.Join(pathWd, "Dockerfile")
 	fSave, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -161,4 +159,24 @@ func saveDockerFile(srcFile *os.File) (err error) {
 		panic(err)
 	}
 	return err
+}
+
+func writeSliceToDockerFile(srcFile *os.File, instruction string, data []string) {
+	imageLine := instruction
+	for _, value := range data {
+		imageLine = fmt.Sprintf("%s %s", imageLine, value)
+	}
+	srcFile.WriteString(imageLine)
+}
+
+func writeMapToDockerFile(srcFile *os.File, instruction string, data map[string]string) {
+	imageLine := instruction
+	for key, value := range data {
+		imageLine = fmt.Sprintf("%s %s=%s", imageLine, key, value)
+	}
+	srcFile.WriteString(imageLine)
+}
+
+func writeLineToDockerFile(srcFile *os.File, instruction string, data string) {
+
 }
