@@ -119,30 +119,28 @@ func add(currentDockerFile *dockerFile, save bool) {
 		panic(err)
 	}
 	defer f.Close()
-	switch {
-	case currentDockerFile.baseImage != "":
+
+	if currentDockerFile.baseImage != "" {
 		baseImageLine := fmt.Sprintf("FROM %s\n", currentDockerFile.baseImage)
 		f.WriteString(baseImageLine)
-		fallthrough
-	case currentDockerFile.maintainer != "":
+	}
+	if currentDockerFile.maintainer != "" {
 		maintainerImageLine := fmt.Sprintf("MAINTAINER %s\n", currentDockerFile.maintainer)
 		f.WriteString(maintainerImageLine)
-		fallthrough
-	case len(currentDockerFile.labels) != 0:
+	}
+	if len(currentDockerFile.labels) != 0 {
 		labelImageLine := "LABEL"
 		for key, value := range currentDockerFile.labels {
 			labelImageLine = fmt.Sprintf("%s %s=%s", labelImageLine, key, value)
 		}
 		f.WriteString(labelImageLine)
-		fallthrough
-	case save != false:
+	}
+	if save != false {
 		err = saveDockerFile(f)
 		if err != nil {
 			panic(err)
 		}
 	}
-
-	fmt.Println(fullPathDockerFile)
 }
 
 func saveDockerFile(srcFile *os.File) (err error) {
