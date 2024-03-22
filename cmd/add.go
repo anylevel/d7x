@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/docker/docker/pkg/archive"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +29,7 @@ to quickly create a Cobra application.`,
 		copy, _ := cmd.Flags().GetString("copy")
 		entryPoint, _ := cmd.Flags().GetString("entrypoint")
 		envs, _ := cmd.Flags().GetStringToString("env")
-		expose, _ := cmd.Flags().GetString("expose")
+		expose, _ := cmd.Flags().GetStringSlice("expose")
 		healthCheck, _ := cmd.Flags().GetString("healthcheck")
 		labels, _ := cmd.Flags().GetStringToString("label")
 		mntr, _ := cmd.Flags().GetString("maintainer")
@@ -36,9 +38,9 @@ to quickly create a Cobra application.`,
 		shell, _ := cmd.Flags().GetString("shell")
 		stopSignal, _ := cmd.Flags().GetString("stopsignal")
 		user, _ := cmd.Flags().GetString("usr")
-		volume, _ := cmd.Flags().GetString("volume")
+		volume, _ := cmd.Flags().GetStringSlice("volume")
 		wrkdir, _ := cmd.Flags().GetString("wrkdir")
-		save, _ := cmd.Flags().GetBool("output")
+		notSave, _ := cmd.Flags().GetBool("notsave")
 		currentDockerFile := dockerFile{
 			baseImage:   imageName,
 			add:         adds,
@@ -59,7 +61,7 @@ to quickly create a Cobra application.`,
 			volumes:     volume,
 			workDir:     wrkdir,
 		}
-		add(&currentDockerFile, save)
+		add(&currentDockerFile, notSave)
 	},
 }
 
@@ -71,7 +73,7 @@ type dockerFile struct {
 	copy        string
 	entryPoint  string
 	envs        map[string]string
-	expose      string
+	expose      []string
 	healthCheck string
 	labels      map[string]string
 	maintainer  string
@@ -80,8 +82,13 @@ type dockerFile struct {
 	shell       string
 	stopSignal  string
 	user        string
-	volumes     string
+	volumes     []string
 	workDir     string
+}
+
+var imageBuildOptions types.imageBuildOptions = types.imageBuildOptions{
+	Dockerfile: "DockerFile",
+	remove: true,
 }
 
 func init() {
@@ -105,10 +112,10 @@ func init() {
 	addCmd.Flags().StringSliceP("volume", "v", nil, "Create volume mounts.")
 	addCmd.Flags().StringP("wrkdir", "w", "", "Change working directory.")
 	//other Flags
-	addCmd.Flags().BoolP("output", "o", false, "Save to Dockerfile")
+	addCmd.Flags().Bool("notsave", false, "Save to Dockerfile")
 }
 
-func add(currentDockerFile *dockerFile, save bool) {
+func add(currentDockerFile *dockerFile, notSave bool) {
 	pathWd, err := os.Getwd()
 	if err != nil {
 		panic(err)
@@ -121,11 +128,11 @@ func add(currentDockerFile *dockerFile, save bool) {
 	defer f.Close()
 
 	if currentDockerFile.baseImage != "" {
-		writeLineToDockerFile(f, "FROM", currentDockerFile.baseImage)
 	}
 	if currentDockerFile.maintainer != "" {
 		writeLineToDockerFile(f, "MAINTAINER", currentDockerFile.maintainer)
 	}
+	writeLineToDockerFile(f, "FROM", currentDockerFile.baseImage)
 	if len(currentDockerFile.labels) != 0 {
 		writeMapToDockerFile(f, "LABEL", currentDockerFile.labels)
 	}
@@ -175,12 +182,6 @@ func add(currentDockerFile *dockerFile, save bool) {
 		writeLineToDockerFile(f, "CMD", currentDockerFile.cmd)
 	}
 
-	if save != false {
-		err = saveDockerFile(f)
-		if err != nil {
-			panic(err)
-		}
-	}
 }
 
 func writeSliceToDockerFile(srcFile *os.File, instruction string, data []string) {
@@ -205,4 +206,49 @@ func writeLineToDockerFile(srcFile *os.File, instruction string, data string) {
 	imageLine := fmt.Sprintf("%s %s", instruction, data)
 	imageLine = fmt.Sprintf("%s\n", imageLine)
 	srcFile.WriteString(imageLine)
+}
+
+func createImage(imageName string) (err error) {
+	ctx := context.Background()
+	apiClient, err := client.NewClientWithOpts(client.FromEnv)
+	defer apiClient.Close()
+	tar, err := archive.TarWithOptions("d7x/", &archive.TarOptions{})
+	if err != nil {
+		return err
+	}
+	imageBuildOptions.Tags = []string{imageName + "/d7x"}
+	res, err := apiClient.ImageBuild(ctx, tar, opts)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	err = print(res.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
+func print(rd io.Reader) error {
+	var lastLine string
+
+	scanner := bufio.NewScanner(rd)
+	for scanner.Scan() {
+		lastLine = scanner.Text()
+		fmt.Println(scanner.Text())
+	}
+
+	errLine := &ErrorLine{}
+	json.Unmarshal([]byte(lastLine), errLine)
+	if errLine.Error != "" {
+		return errors.New(errLine.Error)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
