@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -39,6 +40,8 @@ to quickly create a Cobra application.`,
 		user, _ := cmd.Flags().GetString("usr")
 		volume, _ := cmd.Flags().GetString("volume")
 		wrkdir, _ := cmd.Flags().GetString("wrkdir")
+		save, _ := cmd.Flags().GetBool("output")
+		fmt.Println(save)
 		currentDockerFile := dockerFile{
 			baseImage:   imageName,
 			add:         adds,
@@ -59,7 +62,7 @@ to quickly create a Cobra application.`,
 			volumes:     volume,
 			workDir:     wrkdir,
 		}
-		add(imageName, &currentDockerFile)
+		add(&currentDockerFile, save)
 	},
 }
 
@@ -89,24 +92,26 @@ func init() {
 	//https://docs.docker.com/reference/dockerfile/
 	addCmd.Flags().StringP("add", "a", "", "Add local or remote files and directories.")
 	addCmd.Flags().StringToString("arg", map[string]string{}, "Use build-time variables.")
-	addCmd.Flags().StringP("cmd", "c", "", "Specify default commands.")
+	addCmd.Flags().String("cmd", "", "Specify default commands.")
 	addCmd.Flags().StringP("copy", "c", "", "Copy files and directories.")
-	addCmd.Flags().StringP("entrypoint", "entp", "", "Specify default executable.")
+	addCmd.Flags().String("entrypoint", "", "Specify default executable.")
 	addCmd.Flags().StringToStringP("env", "e", map[string]string{}, "Set environment variables.")
-	addCmd.Flags().StringP("expose", "exps", "", "Describe which ports your application is listening on.")
-	addCmd.Flags().StringP("healthcheck", "health", "", "Check a container's health on startup.")
+	addCmd.Flags().String("expose", "", "Describe which ports your application is listening on.")
+	addCmd.Flags().String("healthcheck", "", "Check a container's health on startup.")
 	addCmd.Flags().StringToStringP("label", "l", map[string]string{}, "Add metadata to an image.")
 	addCmd.Flags().StringP("maintainer", "m", "", "Specify the author of an image.")
-	addCmd.Flags().StringSliceP("onbuild", "onbld", []string{}, "Specify instructions for when the image is used in a build.")
+	addCmd.Flags().StringSlice("onbuild", []string{}, "Specify instructions for when the image is used in a build.")
 	addCmd.Flags().StringSliceP("run", "r", []string{}, "Execute build commands.")
 	addCmd.Flags().StringP("sh", "s", "", "Set the default shell of an image.")
-	addCmd.Flags().StringP("stopsignal", "stpsig", "", "Specify the system call signal for exiting a container.")
+	addCmd.Flags().String("stopsignal", "", "Specify the system call signal for exiting a container.")
 	addCmd.Flags().StringP("usr", "u", "", "Set user and group ID.")
 	addCmd.Flags().StringP("volume", "v", "", "Create volume mounts.")
 	addCmd.Flags().StringP("wrkdir", "w", "", "Change working directory.")
+	//other Flags
+	addCmd.Flags().BoolP("output", "o", false, "Save to Dockerfile")
 }
 
-func add(imageName string, currentDockerFile *dockerFile) {
+func add(currentDockerFile *dockerFile, save bool) {
 	tempName := shortuuid.New()
 	fullPathDockerFile := filepath.Join("/tmp", tempName)
 	f, err := os.Create(fullPathDockerFile)
@@ -114,6 +119,40 @@ func add(imageName string, currentDockerFile *dockerFile) {
 		panic(err)
 	}
 	defer f.Close()
-	baseImageLine := fmt.Sprintf("FROM %s\n", imageName)
-	f.WriteString(baseImageLine)
+	switch {
+	case currentDockerFile.baseImage != "":
+		baseImageLine := fmt.Sprintf("FROM %s\n", currentDockerFile.baseImage)
+		f.WriteString(baseImageLine)
+		fallthrough
+	case currentDockerFile.maintainer != "":
+		maintainerImageLine := fmt.Sprintf("MAINTAINER %s\n", currentDockerFile.maintainer)
+		f.WriteString(maintainerImageLine)
+		fallthrough
+	case len(currentDockerFile.labels) != 0:
+		labelImageLine := "LABEL"
+		for key, value := range currentDockerFile.labels {
+			labelImageLine = fmt.Sprintf("%s %s=%s", labelImageLine, key, value)
+		}
+		f.WriteString(labelImageLine)
+		fallthrough
+	case save != false:
+		pathWd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("My current dir:%s", pathWd)
+		pathToSave := filepath.Join(pathWd, "Dockerfile")
+		fSave, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			panic(err)
+		}
+		defer fSave.Close()
+		f.Seek(0, io.SeekStart)
+		_, err = io.Copy(fSave, f)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	fmt.Println(fullPathDockerFile)
 }
