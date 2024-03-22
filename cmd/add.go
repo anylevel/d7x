@@ -136,23 +136,31 @@ func add(currentDockerFile *dockerFile, save bool) {
 		f.WriteString(labelImageLine)
 		fallthrough
 	case save != false:
-		pathWd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("My current dir:%s", pathWd)
-		pathToSave := filepath.Join(pathWd, "Dockerfile")
-		fSave, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			panic(err)
-		}
-		defer fSave.Close()
-		f.Seek(0, io.SeekStart)
-		_, err = io.Copy(fSave, f)
+		err = saveDockerFile(f)
 		if err != nil {
 			panic(err)
 		}
 	}
 
 	fmt.Println(fullPathDockerFile)
+}
+
+func saveDockerFile(srcFile *os.File) (err error) {
+	pathWd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("My current dir:%s", pathWd)
+	pathToSave := filepath.Join(pathWd, "Dockerfile")
+	fSave, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer fSave.Close()
+	srcFile.Seek(0, io.SeekStart)
+	_, err = io.Copy(fSave, srcFile)
+	if err != nil {
+		panic(err)
+	}
+	return err
 }
