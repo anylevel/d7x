@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
-	"github.com/lithammer/shortuuid"
 	"github.com/spf13/cobra"
 )
 
@@ -90,50 +88,93 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 	//https://docs.docker.com/reference/dockerfile/
 	addCmd.Flags().StringP("add", "a", "", "Add local or remote files and directories.")
-	addCmd.Flags().StringToString("arg", map[string]string{}, "Use build-time variables.")
+	addCmd.Flags().StringToString("arg", nil, "Use build-time variables.")
 	addCmd.Flags().String("cmd", "", "Specify default commands.")
 	addCmd.Flags().StringP("copy", "c", "", "Copy files and directories.")
 	addCmd.Flags().String("entrypoint", "", "Specify default executable.")
-	addCmd.Flags().StringToStringP("env", "e", map[string]string{}, "Set environment variables.")
-	addCmd.Flags().String("expose", "", "Describe which ports your application is listening on.")
+	addCmd.Flags().StringToStringP("env", "e", nil, "Set environment variables.")
+	addCmd.Flags().StringSlice("expose", nil, "Describe which ports your application is listening on.")
 	addCmd.Flags().String("healthcheck", "", "Check a container's health on startup.")
-	addCmd.Flags().StringToStringP("label", "l", map[string]string{}, "Add metadata to an image.")
+	addCmd.Flags().StringToStringP("label", "l", nil, "Add metadata to an image.")
 	addCmd.Flags().StringP("maintainer", "m", "", "Specify the author of an image.")
-	addCmd.Flags().StringSlice("onbuild", []string{}, "Specify instructions for when the image is used in a build.")
-	addCmd.Flags().StringSliceP("run", "r", []string{}, "Execute build commands.")
+	addCmd.Flags().StringSlice("onbuild", nil, "Specify instructions for when the image is used in a build.")
+	addCmd.Flags().StringSliceP("run", "r", nil, "Execute build commands.")
 	addCmd.Flags().StringP("sh", "s", "", "Set the default shell of an image.")
 	addCmd.Flags().String("stopsignal", "", "Specify the system call signal for exiting a container.")
 	addCmd.Flags().StringP("usr", "u", "", "Set user and group ID.")
-	addCmd.Flags().StringP("volume", "v", "", "Create volume mounts.")
+	addCmd.Flags().StringSliceP("volume", "v", nil, "Create volume mounts.")
 	addCmd.Flags().StringP("wrkdir", "w", "", "Change working directory.")
 	//other Flags
 	addCmd.Flags().BoolP("output", "o", false, "Save to Dockerfile")
 }
 
 func add(currentDockerFile *dockerFile, save bool) {
-	tempName := shortuuid.New()
-	fullPathDockerFile := filepath.Join("/tmp", tempName)
-	f, err := os.Create(fullPathDockerFile)
+	pathWd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	pathToSave := filepath.Join(pathWd, "Dockerfile")
+	f, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 
 	if currentDockerFile.baseImage != "" {
-		baseImageLine := fmt.Sprintf("FROM %s\n", currentDockerFile.baseImage)
-		f.WriteString(baseImageLine)
+		writeLineToDockerFile(f, "FROM", currentDockerFile.baseImage)
 	}
 	if currentDockerFile.maintainer != "" {
-		maintainerImageLine := fmt.Sprintf("MAINTAINER %s\n", currentDockerFile.maintainer)
-		f.WriteString(maintainerImageLine)
+		writeLineToDockerFile(f, "MAINTAINER", currentDockerFile.maintainer)
 	}
 	if len(currentDockerFile.labels) != 0 {
-		labelImageLine := "LABEL"
-		for key, value := range currentDockerFile.labels {
-			labelImageLine = fmt.Sprintf("%s %s=%s", labelImageLine, key, value)
-		}
-		f.WriteString(labelImageLine)
+		writeMapToDockerFile(f, "LABEL", currentDockerFile.labels)
 	}
+	if len(currentDockerFile.args) != 0 {
+		writeMapToDockerFile(f, "ARG", currentDockerFile.args)
+	}
+	if len(currentDockerFile.envs) != 0 {
+		writeMapToDockerFile(f, "ENV", currentDockerFile.envs)
+	}
+	if currentDockerFile.add != "" {
+		writeLineToDockerFile(f, "ADD", currentDockerFile.add)
+	}
+	if currentDockerFile.copy != "" {
+		writeLineToDockerFile(f, "COPY", currentDockerFile.copy)
+	}
+	if currentDockerFile.workDir != "" {
+		writeLineToDockerFile(f, "WORKDIR", currentDockerFile.workDir)
+	}
+	if len(currentDockerFile.run) != 0 {
+		writeSliceToDockerFile(f, "RUN", currentDockerFile.run)
+	}
+	if len(currentDockerFile.onbuild) != 0 {
+		writeSliceToDockerFile(f, "ONBUILD", currentDockerFile.onbuild)
+	}
+	if currentDockerFile.stopSignal != "" {
+		writeLineToDockerFile(f, "STOPSIGNAL", currentDockerFile.stopSignal)
+	}
+	if currentDockerFile.shell != "" {
+		writeLineToDockerFile(f, "SHELL", currentDockerFile.shell)
+	}
+	if currentDockerFile.user != "" {
+		writeLineToDockerFile(f, "USER", currentDockerFile.user)
+	}
+	if currentDockerFile.healthCheck != "" {
+		writeLineToDockerFile(f, "HEALTHCHECK", currentDockerFile.healthCheck)
+	}
+	if len(currentDockerFile.volumes) != 0 {
+		writeSliceToDockerFile(f, "VOLUME", currentDockerFile.volumes)
+	}
+	if len(currentDockerFile.expose) != 0 {
+		writeSliceToDockerFile(f, "EXPOSE", currentDockerFile.expose)
+	}
+	if currentDockerFile.entryPoint != "" {
+		writeLineToDockerFile(f, "ENTRYPOINT", currentDockerFile.entryPoint)
+	}
+	if currentDockerFile.cmd != "" {
+		writeLineToDockerFile(f, "CMD", currentDockerFile.cmd)
+	}
+
 	if save != false {
 		err = saveDockerFile(f)
 		if err != nil {
@@ -142,30 +183,12 @@ func add(currentDockerFile *dockerFile, save bool) {
 	}
 }
 
-func saveDockerFile(srcFile *os.File) (err error) {
-	pathWd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	pathToSave := filepath.Join(pathWd, "Dockerfile")
-	fSave, err := os.OpenFile(pathToSave, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		panic(err)
-	}
-	defer fSave.Close()
-	srcFile.Seek(0, io.SeekStart)
-	_, err = io.Copy(fSave, srcFile)
-	if err != nil {
-		panic(err)
-	}
-	return err
-}
-
 func writeSliceToDockerFile(srcFile *os.File, instruction string, data []string) {
 	imageLine := instruction
 	for _, value := range data {
 		imageLine = fmt.Sprintf("%s %s", imageLine, value)
 	}
+	imageLine = fmt.Sprintf("%s\n", imageLine)
 	srcFile.WriteString(imageLine)
 }
 
@@ -174,9 +197,12 @@ func writeMapToDockerFile(srcFile *os.File, instruction string, data map[string]
 	for key, value := range data {
 		imageLine = fmt.Sprintf("%s %s=%s", imageLine, key, value)
 	}
+	imageLine = fmt.Sprintf("%s\n", imageLine)
 	srcFile.WriteString(imageLine)
 }
 
 func writeLineToDockerFile(srcFile *os.File, instruction string, data string) {
-
+	imageLine := fmt.Sprintf("%s %s", instruction, data)
+	imageLine = fmt.Sprintf("%s\n", imageLine)
+	srcFile.WriteString(imageLine)
 }
