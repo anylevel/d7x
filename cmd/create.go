@@ -24,6 +24,8 @@ var createCmd = &cobra.Command{
 	Short: "Create image with shell!",
 	Long: `Create image with shell from source image
 Usage: d7x create name_container name_image [Flags]
+Example:
+d7x create mycontainer centos:latest -v /home/user/myprog:/mnt -v /home/user/myprog2:/app
 	`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {

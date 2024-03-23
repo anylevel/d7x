@@ -18,13 +18,14 @@ import (
 
 var addCmd = &cobra.Command{
 	Use:   "add",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Create Dockerfile and build image with cli!",
+	Long: `Create Dockerfile and build image with cli!
+command must be used in the folder where the image is to be built
+command is intended for building simple images. Attention!
+the order of the flags is not taken into account when creating Dockerfile
+Example:
+d7x add ubuntu -l prod=1.0.0 -r "apt update && apt install -y vim" --cmd ./init
+`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 

@@ -10,7 +10,7 @@ var rootCmd = &cobra.Command{
 	Use:   "d7x",
 	Short: "Create images with d7x!",
 	Long: `DockerBox
-Create images with d7x from shell without Dockerfile`,
+Create images without Dockerfile`,
 }
 
 func Execute() {
