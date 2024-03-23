@@ -1,11 +1,17 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/spf13/cobra"
 )
@@ -40,7 +46,9 @@ to quickly create a Cobra application.`,
 		user, _ := cmd.Flags().GetString("usr")
 		volume, _ := cmd.Flags().GetStringSlice("volume")
 		wrkdir, _ := cmd.Flags().GetString("wrkdir")
-		notSave, _ := cmd.Flags().GetBool("notsave")
+		noSave, _ := cmd.Flags().GetBool("nosave")
+		noBuild, _ := cmd.Flags().GetBool("nobuild")
+		saveName, _ := cmd.Flags().GetString("name")
 		currentDockerFile := dockerFile{
 			baseImage:   imageName,
 			add:         adds,
@@ -61,7 +69,7 @@ to quickly create a Cobra application.`,
 			volumes:     volume,
 			workDir:     wrkdir,
 		}
-		add(&currentDockerFile, notSave)
+		add(&currentDockerFile, noSave, noBuild, saveName)
 	},
 }
 
@@ -86,9 +94,23 @@ type dockerFile struct {
 	workDir     string
 }
 
-var imageBuildOptions types.imageBuildOptions = types.imageBuildOptions{
-	Dockerfile: "DockerFile",
-	remove: true,
+var imageBuildOptions types.ImageBuildOptions = types.ImageBuildOptions{
+	Dockerfile: "Dockerfile",
+	Remove:     true,
+}
+
+type ErrorLine struct {
+	Error       string      `json:"error"`
+	ErrorDetail ErrorDetail `json:"errorDetail"`
+}
+
+type ErrorDetail struct {
+	Message string `json:"message"`
+}
+
+type BuildOutput struct {
+	Stream string `json:"stream"`
+	Aux    string `json:"aux"`
 }
 
 func init() {
@@ -112,10 +134,12 @@ func init() {
 	addCmd.Flags().StringSliceP("volume", "v", nil, "Create volume mounts.")
 	addCmd.Flags().StringP("wrkdir", "w", "", "Change working directory.")
 	//other Flags
-	addCmd.Flags().Bool("notsave", false, "Save to Dockerfile")
+	addCmd.Flags().Bool("nosave", false, "Save to Dockerfile")
+	addCmd.Flags().Bool("nobuild", false, "Dont build image from Dockerfile")
+	addCmd.Flags().String("name", "", "Name for saved image")
 }
 
-func add(currentDockerFile *dockerFile, notSave bool) {
+func add(currentDockerFile *dockerFile, noSave bool, noBuild bool, saveName string) {
 	pathWd, err := os.Getwd()
 	if err != nil {
 		panic(err)
@@ -181,7 +205,18 @@ func add(currentDockerFile *dockerFile, notSave bool) {
 	if currentDockerFile.cmd != "" {
 		writeLineToDockerFile(f, "CMD", currentDockerFile.cmd)
 	}
-
+	if noBuild != true {
+		err = createImage(currentDockerFile.baseImage, saveName)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if noSave {
+		err = os.Remove("Dockerfile")
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func writeSliceToDockerFile(srcFile *os.File, instruction string, data []string) {
@@ -208,16 +243,20 @@ func writeLineToDockerFile(srcFile *os.File, instruction string, data string) {
 	srcFile.WriteString(imageLine)
 }
 
-func createImage(imageName string) (err error) {
+func createImage(imageName string, saveName string) (err error) {
 	ctx := context.Background()
 	apiClient, err := client.NewClientWithOpts(client.FromEnv)
 	defer apiClient.Close()
-	tar, err := archive.TarWithOptions("d7x/", &archive.TarOptions{})
+	tar, err := archive.TarWithOptions("./", &archive.TarOptions{})
 	if err != nil {
 		return err
 	}
-	imageBuildOptions.Tags = []string{imageName + "/d7x"}
-	res, err := apiClient.ImageBuild(ctx, tar, opts)
+	imageName = fmt.Sprintf("%s-d7x", imageName)
+	if saveName != "" {
+		imageName = saveName
+	}
+	imageBuildOptions.Tags = []string{imageName}
+	res, err := apiClient.ImageBuild(ctx, tar, imageBuildOptions)
 	if err != nil {
 		return err
 	}
@@ -230,18 +269,23 @@ func createImage(imageName string) (err error) {
 	return nil
 }
 
-
 func print(rd io.Reader) error {
-	var lastLine string
-
+	var lastLine []byte
+	output := &BuildOutput{}
 	scanner := bufio.NewScanner(rd)
 	for scanner.Scan() {
-		lastLine = scanner.Text()
-		fmt.Println(scanner.Text())
+		lastLine = scanner.Bytes()
+		json.Unmarshal(lastLine, output)
+		switch {
+		case output.Stream != "" && output.Stream != "\n":
+			fmt.Print(output.Stream)
+		case output.Aux != "":
+			fmt.Print(output.Aux)
+		}
 	}
 
 	errLine := &ErrorLine{}
-	json.Unmarshal([]byte(lastLine), errLine)
+	json.Unmarshal(lastLine, errLine)
 	if errLine.Error != "" {
 		return errors.New(errLine.Error)
 	}
