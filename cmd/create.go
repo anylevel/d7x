@@ -3,6 +3,8 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,6 +43,11 @@ func init() {
 	createCmd.Flags().StringSliceP("volume", "v", []string{}, "Bind mount a volume")
 }
 
+type PullOutput struct {
+	Status   string `json:"status"`
+	Progress string `json:"progress"`
+}
+
 var config container.Config = container.Config{
 	OpenStdin:    true,
 	Tty:          true,
@@ -64,8 +71,8 @@ var removeOptions container.RemoveOptions = container.RemoveOptions{
 
 var ctx context.Context = context.Background()
 
-func checkExistImage(apiclient *client.Client, imageName string) {
-	images, err := apiclient.ImageList(ctx, types.ImageListOptions{})
+func checkExistImage(apiClient *client.Client, imageName string) {
+	images, err := apiClient.ImageList(ctx, types.ImageListOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -75,8 +82,38 @@ func checkExistImage(apiclient *client.Client, imageName string) {
 			return
 		}
 	}
-	fmt.Printf("%s is not on the host\nTry->docker pull %s\n", imageName, imageName)
-	os.Exit(1)
+	reader, err := apiClient.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	if err != nil {
+		panic(err)
+	}
+	defer reader.Close()
+	printPull(reader)
+}
+
+func printPull(rd io.Reader) error {
+	var lastLine []byte
+	output := &PullOutput{}
+	scanner := bufio.NewScanner(rd)
+	for scanner.Scan() {
+		lastLine = scanner.Bytes()
+		json.Unmarshal(lastLine, output)
+		switch {
+		case output.Status != "":
+			fmt.Println(output.Status, output.Progress)
+		}
+	}
+
+	errLine := &ErrorLine{}
+	json.Unmarshal(lastLine, errLine)
+	if errLine.Error != "" {
+		return errors.New(errLine.Error)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func getMountsFromSlice(volumes []string) (result []mount.Mount) {
@@ -169,7 +206,7 @@ func sandbox(name string, imageName string, volumes []string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\nContainer %s save to image->%s\n", name, repoWithTag)
+	fmt.Printf("\nContainer %s save to image-> %s\n", name, repoWithTag)
 	err = apiClient.ContainerRemove(ctx, id.ID, removeOptions)
 	if err != nil {
 		panic(err)
